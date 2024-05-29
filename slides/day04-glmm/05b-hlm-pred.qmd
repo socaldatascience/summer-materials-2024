@@ -1,0 +1,659 @@
+---
+title: "(Normal) Hierarchical Models with Predictors"
+author: "Dr. Mine Dogucu"
+execute:
+  echo: true
+format: 
+  revealjs:
+    slide-number: true
+    logo: "https://socaldatascience.github.io/bootcamp-materials-2022/img/socalds-logo.png"
+    theme: ["slide-style.scss"]
+    incremental: false
+---
+
+
+Note that examples in this lecture a modified version of [Chapter 17 of Bayes Rules! book](https://www.bayesrulesbook.com/chapter-17.html)
+
+## Packages
+
+```{r}
+library(bayesrules)
+library(tidyverse)
+```
+
+## Data
+
+```{r}
+data(cherry_blossom_sample)
+running <- cherry_blossom_sample %>% 
+  select(runner, age, net)
+n_runners <- nlevels(running$runner)
+```
+
+
+## Hierarchical model with varying intercepts
+
+Layer 1:
+
+$Y_{ij} | \mu_j, \sigma_y   \hspace{-0.075in} \sim \text{model of how song popularity varies WITHIN artist } j$
+
+<hr>
+
+Layer 2:
+
+$\mu_j | \mu, \sigma_\mu  \hspace{-0.075in} \sim \text{model of how the typical popularity} \mu_j \text{varies BETWEEN artists}$
+
+
+## Layer 1: Variability within runner
+
+The first layer of the simple Normal hierarchical model assumes that each runner's net running times $Y_{ij}$ vary normally around their own mean time $\mu_j$, with no consideration of their age $X_{ij}$:
+
+$$Y_{ij} | \mu_{j}, \sigma_y \sim N(\mu_{j}, \sigma_y^2)$$
+
+
+To incorporate information about age into our understanding of running times within runners, we can replace the $\mu_{j}$ with runner-specific means $\mu_{ij}$, which depend upon the runner's age in their $i$th race, $X_{ij}$.
+
+$$\mu_{ij} = \beta_{0j} + \beta_1 X_{ij}$$
+
+##
+
+Thus, the first layer of our hierarchical model describes the relationship between net times and age __within__ each runner $j$ by:
+
+$$\begin{equation}
+Y_{ij} | \beta_{0j}, \beta_1, \sigma_y \sim N(\mu_{ij}, \sigma_y^2) \;\; \text{ where } \; \mu_{ij} = \beta_{0j} + \beta_1 X_{ij}
+\end{equation}$$
+
+
+
+
+##
+
+Note that $\beta_{0j}$ depends upon $j$, and thus is runner- or __group-specific__:
+
+
+- $\beta_{0j}$ = intercept of the regression model for runner $j$.
+
+
+
+The other parameters are __global__, or shared across all runners $j$
+
+- $\beta_1$ = global age coefficient, i.e., the typical change in a runner's net time per one year increase in age; and
+- $\sigma_y$ = __within-group variability__ around the mean regression model $\beta_{0j} + \beta_1 X_{ij}$, and hence a measure of the _strength_ of the relationship between an individual runner's time and their age.
+
+
+The first layer of our hierarchical model  assumes that relationships between running time and age _randomly_ vary from runner to runner, having _different_ intercepts $\beta_{0j}$ but a shared age coefficient $\beta_1$.
+
+
+
+##
+
+```{r}
+#| echo: false
+#| fig.height: 5
+model_for_plot <- lm(net ~ age + runner, data = running)
+slope <- coef(model_for_plot)[2]
+x <- coef(model_for_plot)[1]
+ints <- c(x, x + coef(model_for_plot)[3:37])
+segs  <- data.frame(x = rep(0, 36), xend = rep(65, 36), y = ints, yend = ints + 65*slope)
+mean_int <- mean(ints)
+g <- ggplot(running, aes(y = net, x = age)) + 
+  geom_point(data = segs, aes(x = x, y = y), size = 0.75) + 
+  lims(x = c(-12, 65), y = c(-15, 130)) + 
+  geom_segment(data = segs, aes(x = x, xend = xend, y = y, yend = yend), size = 0.25) + 
+  geom_point(aes(x = 0, y = mean_int), color = "blue", size = 2) + 
+  geom_text(aes(x = c(-4), y = c(mean_int), label = "beta[0]"), parse = TRUE, color = "blue") + 
+  geom_segment(aes(x = -7, xend = -7, y = -10, yend = 40), arrow = arrow(length = unit(0.03, "npc")), color = "blue") + 
+  geom_segment(aes(x = -7, xend = -7, y = 40, yend = -10), arrow = arrow(length = unit(0.03, "npc")), color = "blue") + 
+  geom_text(aes(x = -10, y = mean_int, label = "sigma[0]"), parse = TRUE, color = "blue") 
+g
+```
+
+
+
+## Layer 2: Variability between runners
+
+
+In this layer we capture how the relationships between running time and age vary from runner to runner, i.e., __between__ runners.
+
+
+In this layer will model variability in the intercept parameters $\beta_{0j}$.
+
+
+
+$$\begin{equation}
+\beta_{0j} | \beta_0, \sigma_0 \stackrel{ind}{\sim} N(\beta_0, \sigma_0^2)
+\end{equation}$$
+
+This layer of the hierarchical model which depends upon two new parameters:
+
+- $\beta_0$ = the __global average intercept__ across all runners, i.e., the _average_ runner's baseline speed;
+- $\sigma_0$ = __between-group variability__ in intercepts $\beta_{0j}$, i.e., the extent to which baseline speeds vary from runner to runner.
+
+
+
+##
+
+
+Regression model within runner $j$: $Y_{ij} | \beta_{0j}, \beta_1, \sigma_y  \sim N(\mu_{ij}, \sigma_y^2)  \text{ with }   \mu_{ij} = \beta_{0j} + \beta_1 X_{ij}$
+
+variability in baseline speeds BETWEEN runners: $\beta_{0j} | \beta_0, \sigma_0   \stackrel{ind}{\sim} N(\beta_0, \sigma_0^2)$
+
+
+
+
+## Normal hierarchical regression assumptions
+
+Let $Y_{ij}$ and $X_{ij}$ denote observations for the $i$th observation in group $j$. 
+The appropriateness of the Normal hierarchical regression model of $Y_{ij}$ by $X_{ij}$ depends upon the following assumptions.
+
+- __Structure of the data__    
+    Conditioned on predictor $X_{ij}$, the outcomes $Y_{ij}$ on any one group $j$ are _independent_ of those on another group $k$, $Y_{ik}$. However, different data points _within_ the same group $j$, $Y_{ij}$ and $Y_{hj}$, are _correlated_.
+    
+(Continued on the next slide)
+
+##
+
+- __Structure of the relationship__    
+    Within any group $j$, the typical outcome of $Y_{ij}$ ( $\mu_{ij}$ ) can be written as a __linear function__ of predictor $X_{ij}$.
+
+
+- __Structure of the variability within groups__    
+    Within any group $j$ and at any predictor value $X_{ij}$, the observed values of $Y_{ij}$ will vary __normally__ around mean $\mu_{ij}$ with consistent standard deviation $\sigma_y$.
+
+
+- __Structure of the variability between groups__    
+    The group-specific baselines or intercepts, $\beta_{0j}$, vary __normally__ around a global intercept $\beta_0$ with standard deviation $\sigma_0$.
+
+##
+
+
+__Connecting the hierarchical and complete pooled models__
+
+The complete pooled model is a _special case_ of the random intercepts model.
+These two models are equivalent when $\sigma_0 = 0$, i.e., when the intercepts do _not_ differ from group to group.
+
+
+
+### Another way to think about it
+
+
+_Equivalently_, we can think of the runner-specific intercepts as random _tweaks_ or _adjustments_ $b_{0j}$ to $\beta_0$,
+
+$$\beta_{0j} = \beta_0 + b_{0j}$$
+
+where these tweaks are normal deviations from _0_ with standard deviation $\sigma_0$:
+
+$$b_{0j} \sim N(0, \sigma_0^2)$$
+
+##
+
+Suppose that some runner $j$ has a baseline running speed of $\beta_{0j} = 24$ minutes, whereas the average baseline speed across _all_ runners is $\beta_0 = 19$ minutes.
+Thus, at any age, runner $j$ tends to run 5 minutes slower than average.
+That is, $b_{0j} = 5$ and
+
+$$\beta_{0j} = \beta_0 + b_{0j} = 19 + 5 = 24$$
+
+##
+
+In general, then, we can reframe Layers 1 and 2 of our hierarchical model as follows:
+
+$$\begin{equation}
+\begin{split}
+Y_{ij} | \beta_{0j}, \beta_1, \sigma_y & \sim N(\mu_{ij}, \sigma_y^2) \;\; \text{ with } \;\;  \mu_{ij} = (\beta_0 + b_{0j}) + \beta_1 X_{ij}  \\
+b_{0j} | \sigma_0  & \stackrel{ind}{\sim} N(0, \sigma_0^2)
+\end{split}
+\end{equation}$$
+
+
+<hr>
+
+$$\begin{equation}
+\begin{split}
+Y_{ij} | \beta_{0j}, \beta_1, \sigma_y & \sim N(\mu_{ij}, \sigma_y^2) \;\; \text{ with } \;\;  \mu_{ij} = \beta_{0j} + \beta_1 X_{ij} \\
+\beta_{0j} | \beta_0, \sigma_0  & \stackrel{ind}{\sim} N(\beta_0, \sigma_0^2) \\
+\end{split}
+\end{equation}$$
+
+##
+
+
+Most runners' times _do_ tend to increase with age, and there is variability between the runners themselves -- some tend to be faster than others.
+
+```{r}
+ggplot(running, aes(x = age, y = net)) + 
+  geom_point() + 
+  facet_wrap(~ runner) +
+  scale_x_continuous(breaks = c(50,55,60))
+```
+
+##
+
+```{r}
+running_model_1 <- lme4::lmer(net ~ age + (1 | runner),
+                              data = running)
+```
+
+
+## 
+
+There are a whopping `r n_runners + 4` parameters in our model: 36 runner-specific intercept parameters ( $\beta_{0j}$ ) in addition to 4 global parameters ($\beta_0, \beta_1, \sigma_y, \sigma_0$).
+
+
+## Global relationship
+
+Consider the __global relationship__ between running time and age for the _typical_ runner: 
+
+$$\beta_0 + \beta_1 X$$ 
+
+Summaries for $\beta_0$ and $\beta_1$, which are `fixed` across runners, can be shown with.
+
+```{r}
+broom.mixed::tidy(running_model_1, effects = "fixed")
+```
+
+The _typical_ runner tends to slow down about 1.24 minutes per year.
+Note that $\hat \beta_0 = 21.8$
+
+## Group Relationships
+
+To examine the __runner-specific relationships__ between net running time and age we have
+
+$$\hat \beta_{0j} + \hat \beta_1 X_{ij} \; = (\hat \beta_0 + b_{0j}) + \hat \beta_1 X_{ij} = (21.8 + b_{0j}) + 1.24 X_{ij}$$
+
+
+##
+
+```{r}
+broom.mixed::tidy(running_model_1, effects = "ran_vals") %>% 
+  slice(1:2, 35:36)
+```
+
+The `estimate` column would give us $b_{0j}$. 
+
+##
+
+```{r}
+broom.mixed::tidy(running_model_1, effects = "ran_coefs") %>% 
+  slice(1:2, 35:38, 43:44)
+```
+
+The first 36 rows would give us $\beta_{0j}$. 
+These values can also be achieved by adding 21.8 ($\hat \beta_0$) to $b_{0j}$s from previous slide.
+
+Runner 2 seems to have a slower baseline than Runner 1 ($17.0-8.39 = `r 17.0-8.39`$). 
+Thus, at any shared age, we would expect runner 2 to run roughly `r 17.0-8.39` minutes slower than runner 1.
+
+##
+
+```{r}
+#| echo: false
+global_summary <- broom.mixed::tidy(running_model_1, effects = "fixed")
+
+B0 <- global_summary$estimate [1]
+B1 <- global_summary$estimate [2]
+
+runner_summaries_1 <- broom.mixed::tidy(running_model_1, effects = "ran_coefs") %>% 
+  rename(runner_intercept = estimate) %>% 
+  mutate(runner_slope = 1.24)
+```
+
+```{r}
+#| echo: false
+# Plot runner-specific models with the global model
+ggplot(running, aes(y = net, x = age, group = runner)) + 
+  geom_abline(data = runner_summaries_1, color = "gray",
+              aes(intercept = runner_intercept, slope = B1)) + 
+  geom_abline(intercept = B0, slope = B1, color = "blue") + 
+  lims(x = c(50, 61), y = c(50, 135))
+```
+The models for our 36 runners $j$ as calculated from the hierarchical random intercepts model (gray), with the global model (blue).
+
+
+
+## Posterior analysis of within- and between-group variability
+
+$\sigma_y$ measures the variability from the mean regression model __within__ each runner.
+
+
+
+$\sigma_0$ measures the variability in baseline running speeds __between__ the runners.
+
+
+##
+
+
+```{r}
+broom.mixed::tidy(running_model_1, effects = "ran_pars")
+```
+
+For a given runner $j$, we estimate that their observed running time at any age will deviate from _their_ mean regression model by roughly 5.19 minutes ( $\sigma_y$ ).
+
+
+In contrast, we expect that baseline speeds vary by roughly 13.2 minutes from runner to runner ( $\sigma_0$ ).
+
+##
+
+Comparatively then, the posterior results suggest that $\sigma_y < \sigma_0$ -- there's greater variability in the models _between_ runners than variability from the model _within_ runners.
+
+
+
+Recall:
+
+$$\text{Var}(Y_{ij}) = \sigma_0^2 + \sigma_y^2  .$$
+$$\text{Var}(Y_{ij}) = 13.2^2 + 5.19^2 = `r 13.2^2 + 5.19^2` .$$
+
+##
+
+
+$$\frac{13.2^2}{`r 13.2^2 + 5.19^2`} = `r 13.2^2/(13.2^2 + 5.19^2)`$$
+$$\text{vs.}$$
+$$\frac{5.19^2}{`r 13.2^2 + 5.19^2`} = `r 5.19^2/(13.2^2 + 5.19^2)`$$
+
+Thus, _proportionally_ differences between runners account for roughly 87% (the majority!) of the total variability in racing times, with fluctuations among individual races within runners explaining the other 13%:
+
+## Hierarchical model with varying intercepts & slopes
+
+```{r}
+#| fig.height: 4 
+running %>% 
+  filter(runner %in% c("4", "5", "20", "29")) %>% 
+  ggplot(., aes(x = age, y = net)) + 
+    geom_point() + 
+    geom_smooth(method = "lm", se = FALSE) + 
+    facet_grid(~ runner)
+```
+
+
+##
+
+Observed trends in running time versus age for the 36 subjects
+
+```{r}
+#| message: false
+#| warning: false
+#| fig.height: 4
+ggplot(running, aes(x = age, y = net, group = runner)) +
+  geom_smooth(method = "lm", se = FALSE, size = 0.5)
+```
+
+## Model building
+
+Our goal is to build a model which recognizes that in the relationship between running time and age, _both_ the intercept (i.e., baseline speed) and slope (i.e., rate at which speed changes with age) might vary from runner to runner.
+
+
+
+$$\begin{equation}
+Y_{ij} | \beta_{0j}, \beta_{1j}, \sigma_y \sim N(\mu_{ij}, \sigma_y^2) \;\; \text{ where } \mu_{ij} = \beta_{0j} + \beta_{1j} X_{ij}  .
+\end{equation}$$
+
+
+
+## 
+
+Previously we assumed that the _runner-specific_ intercepts $\beta_{0j}$ are Normally distributed around some _global_ intercept $\beta_0$ with standard deviation $\sigma_0$, we now also assume that the _runner-specific_ age coefficients $\beta_{1j}$ are Normally distributed around some _global_ age coefficient $\beta_1$ with standard deviation $\sigma_1$:
+
+$$\begin{equation}
+\beta_{0j} | \beta_0, \sigma_0 \sim N(\beta_0, \sigma_0^2)
+\;\;\;\; \text{ and } \;\;\;\;
+\beta_{1j} | \beta_1, \sigma_1 \sim N(\beta_1, \sigma_1^2)
+\end{equation}$$
+
+##
+
+$\beta_{0j}$ and $\beta_{1j}$ work _together_ to describe the model for runner $j$, and thus are _correlated_.
+Let $\rho \in [-1,1]$ represent the correlation between $\beta_{0j}$ and $\beta_{1j}$.
+To reflect this correlation, we represent the _joint_ Normal model of $\beta_{0j}$ and $\beta_{1j}$ by
+
+$$\begin{equation}
+\left(\begin{array}{c}
+\beta_{0j} \\
+\beta_{1j} \\
+\end{array}\right) \vert 
+\beta_0, \beta_1, \sigma_0, \sigma_1 
+\;\; \sim \;\;
+N\left( 
+\left(\begin{array}{c}
+\beta_0 \\
+\beta_1 \\
+\end{array}\right), \;
+\Sigma
+\right)
+\end{equation}$$
+
+where $(\beta_0, \beta_1)$ is the joint mean and $\Sigma$ is the 2x2 __covariance matrix__ which encodes the variability and correlation amongst $\beta_{0j}$ and $\beta_{1j}$:
+
+$$\begin{equation}
+\Sigma = \left(\begin{array}{cc}
+\sigma_0^2 &  \rho \sigma_0 \sigma_1 \\
+\rho \sigma_0 \sigma_1  & \sigma_1^2 \\
+\end{array}\right)
+\end{equation}$$
+
+##
+
+
+On the next slide, plot (a) illustrates the scenario in which there's a strong _negative_ correlation between $\beta_{0j}$ and $\beta_{1j}$ -- models that start out lower (with small $\beta_{0j}$) tend to increase at a more rapid rate (with higher $\beta_{1j}$).
+In plot (c) there's a strong _positive_ correlation between $\beta_{0j}$ and $\beta_{1j}$ -- models that start out higher (with larger $\beta_{0j}$) also tend to increase at a more rapid rate (with higher $\beta_{1j}$).
+In between these two extremes, plot (b) illustrates the scenario in which there's no correlation between the group-specific intercepts and slopes.
+
+
+##
+
+```{r}
+#| echo: false
+set.seed(1)
+plot_fake <- data.frame(b0 = runif(10, -10, 15)) %>% 
+  arrange(desc(b0)) %>% 
+  mutate(b1 = seq(0.5, 3, length = 10) + rnorm(10, sd = 0.1)) 
+g1 <- ggplot(NULL, aes(x = c(-50,50), y = c(-30,30))) + 
+  geom_abline(dat = plot_fake, aes(intercept = b0, slope = b1), size = 0.2) + 
+  geom_hline(yintercept =  0) + 
+  geom_vline(xintercept = 0) + 
+  lims(x = c(0,30), y = c(-10,100)) + 
+  theme(axis.text = element_blank(), axis.ticks = element_blank()) + 
+  labs(title = "(a)", x = "x", y = "y")+
+  theme(plot.title = element_text(size = 9))
+
+set.seed(5)
+plot_fake <- data.frame(b0 = rnorm(10, mean = 10, sd = 5)) %>% 
+  mutate(b1 = rnorm(10, mean = 10, sd = 5)) %>% 
+  mutate(miny = b0 + b1*(-0.2), maxy = b0 + b1*5)
+miny <- min(plot_fake$miny)
+maxy <- min(plot_fake$maxy)
+g2 <- ggplot(NULL, aes(x = c(-0.2,10), y = c(-0.2,maxy))) + 
+  geom_segment(dat = plot_fake, aes(x = -0.2, xend = 5, y = miny, yend = maxy), size = 0.2) + 
+  geom_hline(yintercept =  0) + 
+  geom_vline(xintercept = 0) + 
+  theme(axis.text = element_blank(), axis.ticks = element_blank()) + 
+  labs(title = "(b)", x = "x", y = "y") +
+  theme(plot.title = element_text(size = 9))
+
+set.seed(1)
+plot_fake <- data.frame(b0 = runif(10, 1, 10)) %>% 
+  arrange(b0) %>% 
+  mutate(b1 = seq(0.5, 3, length = 10) + rnorm(10, sd = 0.1)) 
+g3 <- ggplot(NULL, aes(x = c(-50,50), y = c(-30,30))) + 
+  geom_abline(dat = plot_fake, aes(intercept = b0, slope = b1), size = 0.2) + 
+  geom_hline(yintercept =  0) + 
+  geom_vline(xintercept = 0) + 
+  lims(x = c(0,30), y = c(-10,100)) + 
+  theme(axis.text = element_blank(), axis.ticks = element_blank()) + 
+  labs(title = "(c)", x = "x", y = "y") +
+  theme(plot.title = element_text(size = 9))
+
+gridExtra::grid.arrange(g1,g2,g3,ncol=3)
+```
+
+##
+
+ __hierarchical random intercepts and slopes model__:
+
+$$\begin{equation}
+\begin{array}{rl}
+Y_{ij} | \beta_{0j}, \beta_{1j}, \sigma_y & \sim N(\mu_{ij}, \sigma_y^2) \;\; \text{ where } \; \mu_{ij} = \beta_{0j} + \beta_{1j} X_{ij}   \\
+& \\
+\left(\begin{array}{c}
+\beta_{0j} \\
+\beta_{1j} \\
+\end{array}\right) \vert 
+\beta_0, \beta_1, \sigma_0, \sigma_1 & \sim
+N\left( 
+\left(\begin{array}{c}
+\beta_0 \\
+\beta_1 \\
+\end{array}\right), \;
+\Sigma
+\right) \\
+\end{array}
+\end{equation}$$
+
+##
+
+Equivalently, we can re-express the random intercepts and slopes as random tweaks to the global intercept and slope: $\mu_{ij} = (\beta_0 + b_{0j}) + (\beta_1 + b_{1j}) X_{ij}$ with 
+
+$$\left(\begin{array}{c}
+b_{0j} \\
+b_{1j} \\
+\end{array}\right) \vert \; \sigma_0, \sigma_1 \sim
+N\left( 
+\left(\begin{array}{c}
+0 \\
+0 \\
+\end{array}\right), \;
+\Sigma
+\right)$$
+
+##
+
+
+__Connecting our hierarchical models__
+
+The random intercepts model is a _special case_ of random intercepts and random slopes model.
+When $\sigma_1 = 0$, i.e., when the group-specific age coefficients do _not_ differ from group to group, these two models are equivalent.
+
+##
+
+The covariance matrix has information about three separate pieces:
+
+1. the correlation between the group-specific intercepts and slopes, $\rho$;
+2. the combined degree to which the intercepts and slopes vary by group, $\sigma_0^2 + \sigma_1^2$; 
+3. the relative proportion of this variability between groups that's due to differing intercepts vs differing slopes,    
+    
+    $$\pi_0 = \frac{\sigma_0^2}{\sigma_0^2 + \sigma_1^2} \;\; \text{ vs } \;\; \pi_1 = \frac{\sigma_1^2}{\sigma_0^2 + \sigma_1^2}$$
+    
+    
+##
+
+In general, $\pi_0$ and $\pi_1$ always sum to 1, and thus have a push-and-pull relationship.
+
+
+For example, when $\pi_0 \approx 1$ and $\pi_1 \approx 0$, the variability in intercepts ( $\sigma_0^2$ ) is large in comparison to the variability in slopes ( $\sigma_1^2$ ).
+
+
+Thus, the majority of the variability between group-specific models is explained by differences in _intercepts_ (plot a).
+
+
+
+In contrast, when $\pi_0 \approx 0$ and $\pi_1 \approx 1$, the majority of the variability between group-specific models is explained by differences in _slopes_ (plot c).
+
+
+
+In between these extremes, when $\pi_0$ and $\pi_1$ are both approximately 0.5, roughly half of the variability between groups can be explained by differing intercepts and the other half by differing slopes (plot b).
+
+
+##
+
+```{r}
+running_model_2 <- lme4::lmer(net ~ age + (age | runner), 
+                              data = running)
+```
+
+## Global and group-specific parameters
+
+Remember thinking that the `r n_runners + 4` parameters in the random intercepts model was a lot?
+This new model has `r 2*n_runners + 6` parameters: 36 runner-specific intercept parameters $\beta_{0j}$,  36 runner-specific age coefficients $\beta_{1j}$, and 6 global parameters ( $\beta_0, \beta_1, \sigma_y, \sigma_0, \sigma_1, \rho$ ).
+Let's examine these piece by piece, starting with the global model of the relationship between running time and age,
+
+$$\beta_0 + \beta_1 X$$
+
+## 
+
+Summaries for $\beta_0$ and $\beta_1$, which are `fixed` across runners, can be shown with.
+
+```{r}
+broom.mixed::tidy(running_model_2, effects = "fixed")
+```
+
+The global model is $21.7 + 1.25 \text{age}$
+
+##
+
+```{r}
+broom.mixed::tidy(running_model_2, effects = "ran_coefs") %>% 
+  slice(1:2,35:37, 71:72)
+```
+##
+
+```{r}
+#| echo: false
+summary2 <- broom.mixed::tidy(running_model_2, effects = "fixed")
+
+B0 <- summary2$estimate[1]
+B1 <- summary2$estimate[2]
+
+
+random_intercepts <- broom.mixed::tidy(running_model_2, effects = "ran_coefs") %>% 
+  filter(term == "(Intercept)") %>% 
+  select(estimate) %>% 
+  pull()
+
+random_slopes <- broom.mixed::tidy(running_model_2, effects = "ran_coefs") %>% 
+  filter(term == "age") %>% 
+  select(estimate) %>% 
+  pull()
+
+runner_summaries_2 <- tibble(random_intercepts = random_intercepts,
+                             random_slopes = random_slopes)
+
+#| echo: false
+# Plot runner-specific models with the global model
+ggplot(running, aes(y = net, x = age, group = runner)) + 
+  geom_abline(data = runner_summaries_2, color = "gray",
+              aes(intercept = random_intercepts, slope = random_slopes)) + 
+  geom_abline(intercept = B0, slope = B1, color = "blue") + 
+  lims(x = c(50, 61), y = c(50, 135))
+```
+
+## 
+
+The slopes do differ, but not as drastically as we expected.
+
+On average, runner 1's running time increases by just 0.813 minute per year, whereas runner 36's increases by 1.75 minutes per year.
+
+##
+
+
+```{r}
+broom.mixed::tidy(running_model_2, effects = "ran_pars")
+```
+
+
+- The standard deviation $\sigma_1$ in the age coefficients $\beta_{1j}$ is likely around 0.411 minutes per year. On the scale of a 10-mile race, this indicates very little variability between the runners when it comes to the rate at which running times change with age.
+
+
+
+- Per the output for $\sigma_y$, an individual runner's net times tend to deviate from their own mean model by roughly 5.12 minutes.
+
+
+
+- There's a strong negative correlation of roughly -0.934 between the runner-specific $\beta_{0j}$ and $\beta_{1j}$ parameters. Thus, it seems that runners that start off faster tend to slow down at a faster rate.
+
+##
+
+
+Is it worth adding all the additional parameters?
+
+```{r}
+anova(running_model_1, running_model_2)
+```
+
