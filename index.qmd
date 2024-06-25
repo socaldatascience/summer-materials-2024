@@ -28,6 +28,9 @@ library(fontawesome)
 
 
 ## Week 1
+| Topic                         | Materials |
+|-------------------------------|-----------|
+| Generalized Linear Models   |[`r fontawesome::fa(name = "desktop")`](slides/day03-glm/Mozhdeh - GLM.html)           |
 
 ## Week 2
 
