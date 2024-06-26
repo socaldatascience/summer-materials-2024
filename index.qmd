@@ -30,6 +30,7 @@ library(fontawesome)
 ## Week 1
 | Topic                         | Materials |
 |-------------------------------|-----------|
+|An Introduction to Deep Learning|[`r fontawesome::fa(name = "desktop")`](https://drive.google.com/file/d/1pZtvv0Boqi8JLZkUQf2xleofdQKHV_eM/view)
 | Generalized Linear Models   |[`r fontawesome::fa(name = "desktop")`](slides/day03-glm/Mozhdeh - GLM.html)           |
 
 ## Week 2
